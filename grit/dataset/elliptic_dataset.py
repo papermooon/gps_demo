@@ -115,7 +115,9 @@ def create_dataset_elliptic(config):
 
 
 if __name__ == '__main__':
-    dataset = EllipticFunctionalDataset()
+    pre_transform = RRWPTransform(ksteps=24)
+    dataset = EllipticFunctionalDataset(pre_transform=pre_transform)
+    # dataset = EllipticFunctionalDataset()
     data = dataset.data
     print(data.num_nodes)
     print(data.num_edges)
