@@ -38,27 +38,29 @@ class EllipticFunctionalDataset(InMemoryDataset):
 
     @property
     def raw_file_names(self):
-        return ['elliptic_txs_features.csv', 'elliptic_txs_classes.csv', 'elliptic_txs_edgelist.csv']
+        filelist = []
+        for i in range(1, 50):
+            file = 'sub_' + str(i) + '.csv'
+            filelist.append(file)
+        return filelist
 
     @property
     def processed_file_names(self):
-        return ['elliptic_data_processed.pt']
+        processlist = []
+        for i in range(1, 50):
+            processed = 'processed_' + str(i) + '.pt'
+            processlist.append(processed)
+        return processlist
 
     def process(self):
-        raw_node = pd.read_csv('./elliptic_bitcoin_dataset/elliptic_txs_features.csv', header=None)
-        raw_class = pd.read_csv('./elliptic_bitcoin_dataset/elliptic_txs_classes.csv')
         raw_egdes = pd.read_csv('./elliptic_bitcoin_dataset/elliptic_txs_edgelist.csv')
-        raw_node.rename(columns={0: 'txId', 1: 'Times'}, inplace=True)
+        for i in range(1, 50):
+            file = 'sub_' + str(i) + '.csv'
+            sub_graph = pd.read_csv('./subs/' + file)
 
-        # 节点标签重写
-        class_verify = raw_class.replace({'class': {'unknown': 2, '2': 0, '1': 1}})
-
-        # 把标签和节点特征拼在一起
-        merge_data = raw_node.merge(class_verify, left_on="txId", right_on="txId")
-
-        # 按txId排序
-        merge_data = merge_data.sort_values('txId').reset_index(drop=True)
-        nodes = merge_data['txId'].values
+            # 按txId排序
+            sub_graph = sub_graph.sort_values('txId').reset_index(drop=True)
+            nodes = sub_graph['txId'].values
 
         # 重写各节点id，重写连边
         map_id = {j: i for i, j in enumerate(nodes)}
@@ -117,13 +119,31 @@ def create_dataset_elliptic(config):
 if __name__ == '__main__':
     # pre_transform = RRWPTransform(ksteps=24)
     # dataset = EllipticFunctionalDataset(pre_transform=pre_transform)
-    dataset = EllipticFunctionalDataset()
-    data = dataset.data
-    print(data.num_nodes)
-    print(data.num_edges)
-    print(data.num_node_features)
-    print(data.has_isolated_nodes())
-    print(data.is_directed())
+    # dataset = EllipticFunctionalDataset()
+    # data = dataset.data
+    # print(data.num_nodes)
+    # print(data.num_edges)
+    # print(data.num_node_features)
+    # print(data.has_isolated_nodes())
+    # print(data.is_directed())
+
+    raw_egdes = pd.read_csv('./elliptic_bitcoin_dataset/elliptic_txs_edgelist.csv')
+    for i in range(1, 50):
+        file = 'sub_' + str(i) + '.csv'
+        sub_graph = pd.read_csv('./subs/' + file)
+
+        # 按txId排序
+        sub_graph = sub_graph.sort_values('txId').reset_index(drop=True)
+        nodes = sub_graph['txId'].values
+
+        index_list = []
+        for node in nodes:
+            index_list += raw_egdes[raw_egdes['txId1'] == node].index.tolist()
+
+        index_list = pd.Index(index_list)
+        sub_edges = raw_egdes.loc[index_list]
+
+        break
 
     # print(data.edge_index)
     # print(data.edge_index.shape)
