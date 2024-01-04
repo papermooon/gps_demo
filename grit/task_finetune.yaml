@@ -1,9 +1,9 @@
 data: 
   dataset_dir: data
-  batch_size: 32              # batch size
+  batch_size: 2              # batch size default=32
   num_workers: 4               # number of workers for data loading
   pos_enc_rrwp:
-    ksteps: 17
+    ksteps: 8   # default=17
 
   target_col: 'score'
 

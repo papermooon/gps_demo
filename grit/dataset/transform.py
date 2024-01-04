@@ -46,6 +46,7 @@ def add_full_rrwp(data, walk_length=8, attr_name_abs="rrwp"):
 
     out = adj
     for j in range(len(pe_list), walk_length):
+        print("walk",j)
         out = out @ adj
         pe_list.append(out)
 
