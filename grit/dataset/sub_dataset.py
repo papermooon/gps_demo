@@ -46,14 +46,15 @@ class EllipticFunctionalDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        processlist = []
-        for i in range(1, 50):
-            processed = 'processed_' + str(i) + '.pt'
-            processlist.append(processed)
-        return processlist
+        # processlist = []
+        # for i in range(1, 50):
+        #     processed = 'processed_' + str(i) + '.pt'
+        #     processlist.append(processed)
+        return ['sub_graphs.pt']
 
     def process(self):
-        raw_egdes = pd.read_csv('./elliptic_bitcoin_dataset/elliptic_txs_edgelist.csv')
+        data_list = []
+        raw_edges = pd.read_csv('./elliptic_bitcoin_dataset/elliptic_txs_edgelist.csv')
         for i in range(1, 50):
             file = 'sub_' + str(i) + '.csv'
             sub_graph = pd.read_csv('./subs/' + file)
@@ -62,29 +63,27 @@ class EllipticFunctionalDataset(InMemoryDataset):
             sub_graph = sub_graph.sort_values('txId').reset_index(drop=True)
             nodes = sub_graph['txId'].values
 
-        # 重写各节点id，重写连边
-        map_id = {j: i for i, j in enumerate(nodes)}
-        raw_egdes.txId1 = raw_egdes.txId1.map(map_id)
-        raw_egdes.txId2 = raw_egdes.txId2.map(map_id)
+            index_list = []
+            for node in nodes:
+                index_list += raw_edges[raw_edges['txId1'] == node].index.tolist()
 
-        # # 划分数据集，未知数据只能放test_set
-        known_ids = merge_data['class'].loc[merge_data['class'] != 2].index
-        unknown_ids = merge_data['class'].loc[merge_data['class'] == 2].index
+            index_list = pd.Index(index_list)
+            sub_edges = raw_edges.loc[index_list]
+            # 重写各节点id，重写连边
+            map_id = {j: i for i, j in enumerate(nodes)}
+            sub_edges.txId1 = sub_edges.txId1.map(map_id)
+            sub_edges.txId2 = sub_edges.txId2.map(map_id)
 
-        # 存储每个节点的特征，形状是[num_nodes, num_node_features]，一般是float tensor
-        # 保留时序先node_feature = merge_data.drop(["class", "txId", "Times"], axis=1)
-        node_feature = merge_data.drop(["class", "txId"], axis=1)
-        data_x = torch.tensor(np.array(node_feature.values), dtype=torch.float)
+            node_feature = sub_graph.drop(["class", "txId", "Times"], axis=1)
+            data_x = torch.tensor(np.array(node_feature.values), dtype=torch.float)
 
-        # 存储样本标签。如果是每个节点都有标签，那么形状是[num_nodes, *]；
-        node_label = merge_data['class']
-        data_y = torch.tensor(node_label, dtype=torch.long)
+            node_label = sub_graph['class']
+            data_y = torch.tensor(node_label, dtype=torch.long)
 
-        # 用于存储节点之间的边，形状是[2, num_edges]，一般是long tensor。
-        edge_index = torch.tensor(np.array(raw_egdes.values), dtype=torch.long).T
+            edge_index = torch.tensor(np.array(sub_edges.values), dtype=torch.long).T
 
-        data = Data(x=data_x, edge_index=edge_index, y=data_y)
-        data_list = [data]
+            data = Data(x=data_x, edge_index=edge_index, y=data_y)
+            data_list.append(data)
 
         if self.pre_transform is not None:
             data_list = [self.pre_transform(data) for data in data_list]
@@ -117,33 +116,19 @@ def create_dataset_elliptic(config):
 
 
 if __name__ == '__main__':
-    # pre_transform = RRWPTransform(ksteps=24)
-    # dataset = EllipticFunctionalDataset(pre_transform=pre_transform)
+    pre_transform = RRWPTransform(ksteps=8)
+    dataset = EllipticFunctionalDataset(pre_transform=pre_transform)
     # dataset = EllipticFunctionalDataset()
-    # data = dataset.data
-    # print(data.num_nodes)
-    # print(data.num_edges)
-    # print(data.num_node_features)
-    # print(data.has_isolated_nodes())
-    # print(data.is_directed())
+    print(dataset)
+    data = dataset[1]
+    print(data)
+    print(data.num_nodes)
+    print(data.num_edges)
+    print(data.num_node_features)
+    print(data.has_isolated_nodes())
+    print(data.is_directed())
 
-    raw_egdes = pd.read_csv('./elliptic_bitcoin_dataset/elliptic_txs_edgelist.csv')
-    for i in range(1, 50):
-        file = 'sub_' + str(i) + '.csv'
-        sub_graph = pd.read_csv('./subs/' + file)
 
-        # 按txId排序
-        sub_graph = sub_graph.sort_values('txId').reset_index(drop=True)
-        nodes = sub_graph['txId'].values
-
-        index_list = []
-        for node in nodes:
-            index_list += raw_egdes[raw_egdes['txId1'] == node].index.tolist()
-
-        index_list = pd.Index(index_list)
-        sub_edges = raw_egdes.loc[index_list]
-
-        break
 
     # print(data.edge_index)
     # print(data.edge_index.shape)
