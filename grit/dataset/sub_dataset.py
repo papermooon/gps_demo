@@ -9,7 +9,7 @@ from utils.utils import parse_config, set_random_seed, log_GPU_info, load_model
 
 
 class EllipticFunctionalDataset(InMemoryDataset):
-    def __init__(self, root='dataset', use_edge_attr=True, transform=None,
+    def __init__(self, root='./dataset', use_edge_attr=True, transform=None,
                  pre_transform=None, pre_filter=None):
         self.root = root
         self.use_edge_attr = use_edge_attr
@@ -57,7 +57,7 @@ class EllipticFunctionalDataset(InMemoryDataset):
             sub_edges.txId2 = sub_edges.txId2.map(map_id)
 
             node_feature = sub_graph.drop(["class", "txId", "Times"], axis=1)
-            data_x = torch.tensor(np.array(node_feature.values), dtype=torch.float)
+            data_x = torch.tensor(np.array(node_feature.values), dtype=torch.long)
 
             node_label = sub_graph['class']
             data_y = torch.tensor(node_label, dtype=torch.long)

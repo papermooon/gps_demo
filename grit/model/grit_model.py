@@ -23,6 +23,13 @@ class FeatureEncoder(torch.nn.Module):
         self.edge_encoder = BondEncoder(hidden_size)
 
     def forward(self, batch):
+        print(batch)
+        print("处理batch：",batch.x.shape)
+        for i in range(batch.x.shape[1]):
+            print(batch.x[:,i])
+        print("处理attr：", batch.edge_attr.shape)
+        for i in range(batch.edge_attr.shape[1]):
+            print(batch.edge_attr[:, i])
         batch.x = self.node_encoder(batch.x)
         batch.edge_attr = self.edge_encoder(batch.edge_attr)
         return batch
