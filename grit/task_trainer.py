@@ -28,7 +28,8 @@ class TaskTrainer:
         if task_type == 'regression':
             self.loss_fn = nn.MSELoss()
         elif task_type == 'classification':
-            self.loss_fn = nn.BCEWithLogitsLoss()
+            # self.loss_fn = nn.BCEWithLogitsLoss()
+            self.loss_fn = nn.CrossEntropyLoss()
         else:
             raise Exception(f'Unknown task type: {task_type}')
 
@@ -65,17 +66,15 @@ class TaskTrainer:
 
     def run_forward(self, model, batch):
         batch = batch.to(self.device)
-        print(batch)
-        print(batch.split)
         pred, true = model(batch)
 
         pred = pred.squeeze(-1) if pred.ndim > 1 else pred
         true = true.squeeze(-1) if true.ndim > 1 else true
 
         logger.debug(f'pred: {pred.shape}, true: {true.shape}')
-        print(batch)
-        print(pred)
-        print(true)
+        # print(batch)
+        # print(pred)
+        # print(true)
         # pred = F.log_softmax(pred, dim=-1)
         # loss = F.nll_loss(pred.squeeze(), true.squeeze())
         loss = self.loss_fn(pred, true)
@@ -105,6 +104,19 @@ class TaskTrainer:
                 loss.backward()
                 self.optimizer.step()
                 self.optimizer.zero_grad(set_to_none=True)
+                # del loss, batch
+                # torch.cuda.empty_cache()
+                # print("now_allocated:{}".format(torch.cuda.memory_allocated(0)))
+                import pynvml
+                pynvml.nvmlInit()
+                handle = pynvml.nvmlDeviceGetHandleByIndex(0)  # 0表示显卡标号
+
+                # 在每一个要查看的地方都要重新定义一个meminfo
+                meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                print(meminfo.total / 1024 ** 2)  # 总的显存大小
+                print(meminfo.used / 1024 ** 2)  # 已用显存大小
+                print(meminfo.free / 1024 ** 2)  # 剩余显存大小
+                # 单位是MB，如果想看G就再除以一个1024
 
         loss = float(np.mean(losses))
         logger.info(f'train epoch: {epoch + 1}/{self.n_epochs}, loss: {loss:.4f}')
