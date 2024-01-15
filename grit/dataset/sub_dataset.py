@@ -84,6 +84,39 @@ def create_dataset_elliptic(config):
     val_dataset = dataset[34:39]
     test_dataset = dataset[39:]
     # print(len(train_dataset), len(val_dataset), len(test_dataset))
+    # print(train_dataset[1])
+    import torch_geometric.transforms as T
+
+    split_train = T.RandomNodeSplit(split="train_rest", num_val=0., num_test=0.)
+    split_val = T.RandomNodeSplit(num_val=1.0)
+    split_test = T.RandomNodeSplit(split="test_rest")
+
+    tmp_train = []
+    for data in train_dataset:
+        data = split_train(data)
+        data.split = 'train'
+        tmp_train.append(data)
+    train_dataset = tmp_train
+    # mask = '{}_mask'.format(train_dataset[0].split)
+    # print(train_dataset[0][mask])
+    # print(train_dataset[0].x)
+    # print(train_dataset[0].x[train_dataset[0][mask]])
+    # print(train_dataset[0].x['train_mask'])
+
+    tmp_test = []
+    for data in test_dataset:
+        data = split_test(data)
+        data.split = 'test'
+        tmp_test.append(data)
+    test_dataset = tmp_test
+
+    tmp_val = []
+    for data in val_dataset:
+        data = split_val(data)
+        data.split = 'val'
+        tmp_val.append(data)
+    val_dataset = tmp_val
+
     return train_dataset, val_dataset, test_dataset
 
 

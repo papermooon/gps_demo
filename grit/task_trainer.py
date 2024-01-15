@@ -65,12 +65,17 @@ class TaskTrainer:
 
     def run_forward(self, model, batch):
         batch = batch.to(self.device)
+        print(batch)
+        print(batch.split)
         pred, true = model(batch)
 
         pred = pred.squeeze(-1) if pred.ndim > 1 else pred
         true = true.squeeze(-1) if true.ndim > 1 else true
 
-        # logger.debug(f'pred: {pred.shape}, true: {true.shape}')
+        logger.debug(f'pred: {pred.shape}, true: {true.shape}')
+        print(batch)
+        print(pred)
+        print(true)
         # pred = F.log_softmax(pred, dim=-1)
         # loss = F.nll_loss(pred.squeeze(), true.squeeze())
         loss = self.loss_fn(pred, true)

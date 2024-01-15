@@ -2,10 +2,10 @@ import torch
 import torch_geometric.graphgym.register as register
 from torch_geometric.graphgym.config import cfg
 from torch_geometric.graphgym.models.gnn import GNNPreMP
-from torch_geometric.graphgym.models.layer import (new_layer_config, BatchNorm1dNode)
+from torch_geometric.graphgym.models.layer import (new_layer_config, BatchNorm1dNode, MLP)
 
 from ogb.graphproppred.mol_encoder import AtomEncoder, BondEncoder
-from torch_geometric.graphgym.models.head import GNNGraphHead
+from torch_geometric.graphgym.models.head import GNNGraphHead, GNNNodeHead
 from .rrwp_pe import RRWPLinearNodeEncoder, RRWPLinearEdgeEncoder
 from .grit_layer import GritTransformerLayer
 
@@ -39,6 +39,27 @@ class NodeEncoder(torch.nn.Module):
             x_embedding += self.atom_embedding_list[i](x[:, i])
 
         return x_embedding
+
+
+class DIY_NodeHead(torch.nn.Module):
+
+    def __init__(self, dim_in, dim_out):
+        super().__init__()
+        self.layer_post_mp = MLP(
+            new_layer_config(dim_in, dim_out, cfg.gnn.layers_post_mp,
+                             has_act=False, has_bias=True, cfg=cfg))
+
+    def _apply_index(self, batch):
+        for words in batch.split:
+            assert words == batch.split[0]
+        mask = '{}_mask'.format(batch.split[0])
+        return batch.x[batch[mask]], \
+            batch.y[batch[mask]]
+
+    def forward(self, batch):
+        batch = self.layer_post_mp(batch)
+        pred, label = self._apply_index(batch)
+        return pred, label
 
 
 class FeatureEncoder(torch.nn.Module):
@@ -89,7 +110,9 @@ class GritTransformer(torch.nn.Module):
                   for _ in range(n_layers)]
         self.layers = torch.nn.Sequential(*layers)
 
-        self.post_mp = GNNGraphHead(dim_in=hidden_size, dim_out=dim_out)
+        # self.post_mp = GNNGraphHead(dim_in=hidden_size, dim_out=dim_out)
+        # self.post_mp = GNNNodeHead(dim_in=hidden_size, dim_out=dim_out)
+        self.post_mp = DIY_NodeHead(dim_in=hidden_size, dim_out=dim_out)
 
     def forward(self, batch):
         batch = self.get_embd(batch)
