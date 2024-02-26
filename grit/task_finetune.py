@@ -1,11 +1,13 @@
 import argparse
+
+import torch
 from loguru import logger
 from pathlib import Path
 from torch_geometric.loader import DataLoader
 
 from utils.utils import parse_config, set_random_seed, log_GPU_info, load_model
 # from .dataset.dataset import create_dataset
-from grit.dataset.sub_dataset import create_dataset_elliptic
+from grit.dataset.mini_dataset import create_miniDataset
 from grit.model.grit_model import GritTransformer
 # from .model.cl_model import CLModel
 from task_trainer import TaskTrainer
@@ -13,7 +15,7 @@ from task_trainer import TaskTrainer
 
 def get_dataloaders(config):
     # train_set, val_set, test_set = create_dataset(config)
-    train_set, val_set, test_set = create_dataset_elliptic(config)
+    train_set, val_set, test_set = create_miniDataset(config)
 
     train_dataloader = DataLoader(train_set, batch_size=config.batch_size, num_workers=config.num_workers, pin_memory=True)
     val_dataloader = DataLoader(val_set, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers, pin_memory=True)
@@ -30,6 +32,8 @@ def main(args, config):
     # nout = 10 # len(config.data.target_col.split(','))
     nout = 3 # len(config.data.target_col.split(','))
     model = GritTransformer(nout, **config.model.grit, ksteps=config.data.pos_enc_rrwp.ksteps)
+    from torchinfo import summary
+    summary(model)
 
     if args.ckpt is not None:
        model = load_model(model, args.ckpt)

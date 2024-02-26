@@ -3,16 +3,16 @@ data:
   batch_size: 1             # batch size default=32
   num_workers: 4               # number of workers for data loading
   pos_enc_rrwp:
-    ksteps: 8   # default=17
+    ksteps: 16   # default=17
 
   target_col: 'score'
 
 model:
   grit:
-    hidden_size: 24               # hidden default=96
+    hidden_size: 128               # hidden default=96
     layers_pre_mp: 0
-    n_layers: 1                 # n_layers default=4
-    n_heads: 1                  # n_heads default=4
+    n_layers: 4                 # n_layers default=4
+    n_heads: 4                  # n_heads default=4
     dropout: 0.0
     attn_dropout: 0.5
 
@@ -24,7 +24,7 @@ model:
 train:  # Training params
   device: 'cuda'                    # device to use for training
   max_epochs: 20                  # *total number of epochs, 200
-  use_amp: true                     # whether to use torch.amp for automatic mixed precision training
+  use_amp: false                     # whether to use torch.amp for automatic mixed precision training
   task_type: classification             # task type, 'classification' or 'regression'
   learning_rate: 0.001              # *learning rate
   lr_patience: 20

@@ -25,7 +25,10 @@ class NodeEncoder(torch.nn.Module):
                              8, 8, 7, 5, 8,
                              10, 8, 10, 5, 5, 6, 8, 9, 5, 3, 5, 10, 8, 8, 11, 5, 5, 9, 8, 8, 11, 5, 5, 10, 8, 9, 12, 5,
                              5, 8, 8, 9, 8, 5, 5]
-
+        # self.hyper_params = [9, 6, 6, 10, 9, 9, 5, 10, 8, 5, 5, 7, 8, 9, 7, 7, 7, 8, 9, 8, 8, 7, 5, 6, 7, 4, 7, 9, 9, 8,
+        #                      9,
+        #                      9, 12, 10, 11, 11, 10, 10, 10, 10, 5, 5, 8, 10, 9, 11, 6, 8, 10, 7, 10, 10, 8, 10, 12, 9,
+        #                      5]
         self.atom_embedding_list = torch.nn.ModuleList()
 
         for i, dim in enumerate(self.hyper_params):
@@ -34,10 +37,11 @@ class NodeEncoder(torch.nn.Module):
             self.atom_embedding_list.append(emb)
 
     def forward(self, x):
+        # print("shape!", x.shape)
         x_embedding = 0
         for i in range(x.shape[1]):
             x_embedding += self.atom_embedding_list[i](x[:, i])
-
+        # print("shape_reform!", x_embedding.shape)
         return x_embedding
 
 
@@ -75,7 +79,6 @@ class FeatureEncoder(torch.nn.Module):
         self.hidden_size = hidden_size
         # self.node_encoder = AtomEncoder(hidden_size)
         self.node_encoder = NodeEncoder(hidden_size)
-        self.edge_encoder = BondEncoder(hidden_size)
 
     def forward(self, batch):
         # print(batch)

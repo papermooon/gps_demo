@@ -8,13 +8,14 @@ from loguru import logger
 from torch.utils.tensorboard import SummaryWriter
 from utils.utils import save_model, get_regresssion_metrics, get_metrics, LossAnomalyDetector
 import torch.nn.functional as F
+from sklearn.metrics import classification_report, matthews_corrcoef
 
 
 class TaskTrainer:
 
-    def __init__(self, model, output_dir, grad_norm_clip=1.0, device='cuda', 
+    def __init__(self, model, output_dir, grad_norm_clip=1.0, device='cuda',
                  max_epochs=10, use_amp=True, task_type='regression',
-                 learning_rate=1e-4,lr_patience=20, lr_decay=0.5, min_lr=1e-5, weight_decay=0.0):
+                 learning_rate=1e-4, lr_patience=20, lr_decay=0.5, min_lr=1e-5, weight_decay=0.0):
         self.model = model
         self.output_dir = output_dir
         self.grad_norm_clip = grad_norm_clip
@@ -34,10 +35,12 @@ class TaskTrainer:
             raise Exception(f'Unknown task type: {task_type}')
 
         raw_model = self.model.module if hasattr(self.model, "module") else self.model
-        self.optimizer = torch.optim.Adam(filter(lambda x: x.requires_grad, raw_model.parameters()), lr=learning_rate, weight_decay=weight_decay)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=lr_decay, patience=lr_patience, verbose=True)
+        self.optimizer = torch.optim.Adam(filter(lambda x: x.requires_grad, raw_model.parameters()), lr=learning_rate,
+                                          weight_decay=weight_decay)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=lr_decay,
+                                                                    patience=lr_patience, verbose=True)
         self.min_lr = min_lr
-    
+
     def fit(self, train_loader, val_loader=None, test_loader=None, save_ckpt=True):
         model = self.model.to(self.device)
 
@@ -51,10 +54,10 @@ class TaskTrainer:
                 test_loss, _ = self.eval_epoch(epoch, model, test_loader, e_type='test')
 
             curr_loss = val_loss if 'val_loss' in locals() else train_loss
-            
+
             if self.output_dir is not None and save_ckpt and curr_loss < best_loss:  # only save better loss
                 best_loss = curr_loss
-                self._save_model(self.output_dir, str(epoch+1), curr_loss)
+                self._save_model(self.output_dir, str(epoch + 1), curr_loss)
 
             if self.optimizer.param_groups[0]['lr'] < float(self.min_lr):
                 logger.info("Learning rate == min_lr, stop!")
@@ -71,7 +74,7 @@ class TaskTrainer:
         pred = pred.squeeze(-1) if pred.ndim > 1 else pred
         true = true.squeeze(-1) if true.ndim > 1 else true
 
-        logger.debug(f'pred: {pred.shape}, true: {true.shape}')
+        # logger.debug(f'pred: {pred.shape}, true: {true.shape}')
         # print(batch)
         # print(pred)
         # print(true)
@@ -80,7 +83,7 @@ class TaskTrainer:
         loss = self.loss_fn(pred, true)
         pred = torch.sigmoid(pred)
         return loss, pred, true
-    
+
     def train_epoch(self, epoch, model, train_loader):
         model.train()
         losses = []
@@ -107,22 +110,22 @@ class TaskTrainer:
                 # del loss, batch
                 # torch.cuda.empty_cache()
                 # print("now_allocated:{}".format(torch.cuda.memory_allocated(0)))
-                import pynvml
-                pynvml.nvmlInit()
-                handle = pynvml.nvmlDeviceGetHandleByIndex(0)  # 0表示显卡标号
 
-                # 在每一个要查看的地方都要重新定义一个meminfo
-                meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                print(meminfo.total / 1024 ** 2)  # 总的显存大小
-                print(meminfo.used / 1024 ** 2)  # 已用显存大小
-                print(meminfo.free / 1024 ** 2)  # 剩余显存大小
-                # 单位是MB，如果想看G就再除以一个1024
+                # import pynvml
+                # pynvml.nvmlInit()
+                # handle = pynvml.nvmlDeviceGetHandleByIndex(0)  # 0表示显卡标号
+                # # 在每一个要查看的地方都要重新定义一个meminfo
+                # meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                # print(meminfo.total / 1024 ** 2)  # 总的显存大小
+                # print(meminfo.used / 1024 ** 2)  # 已用显存大小
+                # print(meminfo.free / 1024 ** 2)  # 剩余显存大小
+                # # 单位是MB，如果想看G就再除以一个1024
 
         loss = float(np.mean(losses))
         logger.info(f'train epoch: {epoch + 1}/{self.n_epochs}, loss: {loss:.4f}')
         self.writer.add_scalar(f'train_loss', loss, epoch + 1)
         return loss
-    
+
     @torch.no_grad()
     def eval_epoch(self, epoch, model, test_loader, e_type='test'):
         model.eval()
@@ -149,15 +152,22 @@ class TaskTrainer:
 
         y_test = np.concatenate(y_test, axis=0).squeeze()
         y_test_hat = np.concatenate(y_test_hat, axis=0).squeeze()
+        y_test_hat = np.argmax(y_test_hat, axis=1)
+
         # logger.info(f'y_test: {y_test.shape}, y_test_hat: {y_test_hat.shape}')
         if self.task_type == 'regression':
             mae, mse, _, spearman, pearson = get_regresssion_metrics(y_test_hat, y_test, print_metrics=False)
-            logger.info(f'{e_type} epoch: {epoch+1}, spearman: {spearman:.3f}, pearson: {pearson:.3f}, mse: {mse:.3f}, mae: {mae:.3f}')
+            logger.info(
+                f'{e_type} epoch: {epoch + 1}, spearman: {spearman:.3f}, pearson: {pearson:.3f}, mse: {mse:.3f}, mae: {mae:.3f}')
             self.writer.add_scalar('spearman', spearman, epoch + 1)
             metric = spearman
         elif self.task_type == 'classification':
-            acc, pr, sn, sp, mcc, auroc = get_metrics(y_test_hat > 0.5, y_test, print_metrics=False)
-            logger.info(f'{e_type} epoch: {epoch+1}, acc: {acc*100:.2f}, pr: {pr*100:.3f}, sn: {sn*100:.3f}, sp: {sp:.2f}, mcc: {mcc:.3f}, auroc: {auroc:.3f}')
+
+            mcc = matthews_corrcoef(y_test, y_test_hat)
+            logger.info(f'\n{classification_report(y_test, y_test_hat)}\n{e_type} epoch: {epoch + 1},  mcc: {mcc:.3f}')
+            # acc, pr, sn, sp, mcc, auroc = get_metrics(y_test_hat > 0.5, y_test, print_metrics=False)
+            # logger.info(
+            #     f'{e_type} epoch: {epoch + 1}, acc: {acc * 100:.2f}, pr: {pr * 100:.3f}, sn: {sn * 100:.3f}, sp: {sp:.2f}, mcc: {mcc:.3f}, auroc: {auroc:.3f}')
             self.writer.add_scalar('mcc', mcc, epoch + 1)
             metric = mcc
         return loss, metric
