@@ -9,6 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 from utils.utils import save_model, get_regresssion_metrics, get_metrics, LossAnomalyDetector
 import torch.nn.functional as F
 from sklearn.metrics import classification_report, matthews_corrcoef
+import random
 
 
 class MultiClassFocalLossWithAlpha(nn.Module):
@@ -57,8 +58,12 @@ class TaskTrainer:
             self.loss_fn = nn.MSELoss()
         elif task_type == 'classification':
             # self.loss_fn = nn.BCEWithLogitsLoss()
-            # self.loss_fn = nn.CrossEntropyLoss()
-            self.loss_fn = MultiClassFocalLossWithAlpha()
+            # self.loss_fn = nn.CrossEntropyLoss(weight=torch.tensor([0.2, 1.0], device='cuda'),
+            #                                    label_smoothing=0.1, ignore_index=2)
+            # self.loss_fn = nn.CrossEntropyLoss(weight=torch.tensor([0.2, 1.0], device='cuda'),
+            #                                    ignore_index=2)
+            self.loss_fn = nn.BCEWithLogitsLoss(weight=torch.tensor([0.2, 1.0], device='cuda'))
+            # self.loss_fn = MultiClassFocalLossWithAlpha()
         else:
             raise Exception(f'Unknown task type: {task_type}')
 
@@ -73,19 +78,26 @@ class TaskTrainer:
         model = self.model.to(self.device)
 
         best_loss = np.float32('inf')
+        best_appearance = np.float32(0)
+
         for epoch in range(self.n_epochs):
             train_loss = self.train_epoch(epoch, model, train_loader)
             if val_loader is not None:
-                val_loss, _ = self.eval_epoch(epoch, model, val_loader, e_type='val')
+                val_loss, mcc_metric = self.eval_epoch(epoch, model, val_loader, e_type='val')
 
             if test_loader is not None:
                 test_loss, _ = self.eval_epoch(epoch, model, test_loader, e_type='test')
 
             curr_loss = val_loss if 'val_loss' in locals() else train_loss
+            curr_appearance = mcc_metric
 
             if self.output_dir is not None and save_ckpt and curr_loss < best_loss:  # only save better loss
                 best_loss = curr_loss
                 self._save_model(self.output_dir, str(epoch + 1), curr_loss)
+
+            if self.output_dir is not None and save_ckpt and curr_appearance > best_appearance:  # 表现更好的也可以保存
+                best_appearance = curr_appearance
+                self._save_model(self.output_dir, str(epoch + 1) + "_mcc_", curr_appearance)
 
             if self.optimizer.param_groups[0]['lr'] < float(self.min_lr):
                 logger.info("Learning rate == min_lr, stop!")
@@ -102,7 +114,8 @@ class TaskTrainer:
         pred = pred.squeeze(-1) if pred.ndim > 1 else pred
         true = true.squeeze(-1) if true.ndim > 1 else true
 
-        # logger.debug(f'pred: {pred.shape}, true: {true.shape}')
+        logger.debug(f'pred: {pred.shape}, true: {true.shape}')
+        print(shit)
         # print(batch)
         # print(pred)
         # print(true)
@@ -114,6 +127,58 @@ class TaskTrainer:
 
         return loss, pred, true
 
+    @torch.no_grad()
+    def mix_up(self, real_batch, ratio=0.5, alpha=1.0):
+        batch = real_batch.clone()
+        lam = np.random.beta(alpha, alpha)
+        batch_size = len(batch)
+        for i in range(batch_size):
+            data = batch[i]
+            origin_feature = data.x.clone()
+            origin_one_hot = data.binary_label.clone()
+            origin_index = data.edge_index.clone()
+
+            num_vectors = origin_index.size(1)
+            num_select = int(num_vectors * ratio)
+            fusion_list = []
+            mode = ['top', 'bot']
+            while len(fusion_list) <= num_select:
+                index = random.randint(0, num_vectors - 1)
+                source_dot = origin_index[0][index].item()
+                target_dot = origin_index[1][index].item()
+                if target_dot in fusion_list and source_dot in fusion_list:
+                    continue
+
+                act = random.choices(mode, weights=[1, 1], k=1)
+
+                x_i = origin_feature[target_dot, :]
+                x_j = origin_feature[source_dot, :]
+                y_i = origin_one_hot[target_dot]
+                y_j = origin_one_hot[source_dot]
+
+                # 源点融合给汇点
+                if act == 'top':
+                    if target_dot not in fusion_list:
+                        data.x[target_dot, :] = lam * x_i + (1 - lam) * x_j
+                        data.binary_label[target_dot] = lam * y_i + (1 - lam) * y_j
+                        fusion_list.append(target_dot)
+                    else:
+                        data.x[source_dot, :] = lam * x_j + (1 - lam) * x_i
+                        data.binary_label[source_dot] = lam * y_j + (1 - lam) * y_i
+                        fusion_list.append(source_dot)
+                # 汇点融合给源点
+                else:
+                    if source_dot not in fusion_list:
+                        data.x[source_dot, :] = lam * x_j + (1 - lam) * x_i
+                        data.binary_label[source_dot] = lam * y_j + (1 - lam) * y_i
+                        fusion_list.append(source_dot)
+                    else:
+                        data.x[target_dot, :] = lam * x_i + (1 - lam) * x_j
+                        data.binary_label[target_dot] = lam * y_i + (1 - lam) * y_j
+                        fusion_list.append(target_dot)
+
+        return batch
+
     def train_epoch(self, epoch, model, train_loader):
         model.train()
         losses = []
@@ -121,6 +186,8 @@ class TaskTrainer:
         for it, batch in pbar:
             if self.device == 'cuda':
                 with torch.autocast(device_type=self.device, dtype=torch.float16, enabled=self.use_amp):
+                    batch = self.mix_up(batch)
+                    print(shit)
                     loss, _, _ = self.run_forward(model, batch)
                     loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
             else:
@@ -192,9 +259,15 @@ class TaskTrainer:
             self.writer.add_scalar('spearman', spearman, epoch + 1)
             metric = spearman
         elif self.task_type == 'classification':
+            # 找到 y_test 中值不等于2的索引
+            indices_to_keep = (y_test != 2)
+            # 从 y_test 中移除值为2的部分
+            y_test = y_test[indices_to_keep]
+            y_test_hat = y_test_hat[indices_to_keep]
 
             mcc = matthews_corrcoef(y_test, y_test_hat)
-            logger.info(f'\n{classification_report(y_test, y_test_hat)}\n{e_type} epoch: {epoch + 1},  mcc: {mcc:.3f}')
+            logger.info(
+                f'\n{classification_report(y_test, y_test_hat, digits=4)}\n{e_type} epoch: {epoch + 1},  mcc: {mcc:.3f}')
             # acc, pr, sn, sp, mcc, auroc = get_metrics(y_test_hat > 0.5, y_test, print_metrics=False)
             # logger.info(
             #     f'{e_type} epoch: {epoch + 1}, acc: {acc * 100:.2f}, pr: {pr * 100:.3f}, sn: {sn * 100:.3f}, sp: {sp:.2f}, mcc: {mcc:.3f}, auroc: {auroc:.3f}')

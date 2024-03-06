@@ -6,7 +6,7 @@ from torch_geometric.graphgym.models.layer import (new_layer_config, BatchNorm1d
 
 from ogb.graphproppred.mol_encoder import AtomEncoder, BondEncoder
 from torch_geometric.graphgym.models.head import GNNGraphHead, GNNNodeHead
-from .rrwp_pe import RRWPLinearNodeEncoder, RRWPLinearEdgeEncoder
+from .rrwp_pe import RRWPLinearNodeEncoder, RRWPLinearEdgeEncoder, SimilarityLinearEdgeEncoder, ConcatLinearNodeEncoder
 from .grit_layer import GritTransformerLayer
 
 
@@ -57,8 +57,10 @@ class DIY_NodeHead(torch.nn.Module):
         for words in batch.split:
             assert words == batch.split[0]
         mask = '{}_mask'.format(batch.split[0])
+        # return batch.x[batch[mask]], \
+        #     batch.y[batch[mask]]
         return batch.x[batch[mask]], \
-            batch.y[batch[mask]]
+            batch.binary_label[batch[mask]]
 
     def forward(self, batch):
         batch = self.layer_post_mp(batch)
@@ -104,10 +106,18 @@ class GritTransformer(torch.nn.Module):
         self.rrwp_abs_encoder = RRWPLinearNodeEncoder(ksteps, hidden_size)
         self.rrwp_rel_encoder = RRWPLinearEdgeEncoder(ksteps, hidden_size, pad_to_full_graph=True,
                                                       add_node_attr_as_self_loop=False, fill_value=0.)
+
+        # self.rrwp_abs_encoder = ConcatLinearNodeEncoder(ksteps, hidden_size)
+        # self.rrwp_rel_encoder = SimilarityLinearEdgeEncoder(ksteps, hidden_size, pad_to_full_graph=True,
+        #                                                     add_node_attr_as_self_loop=False, fill_value=0.)
+
         self.layers_pre_mp = layers_pre_mp
         if layers_pre_mp > 0:
             self.pre_mp = GNNPreMP(hidden_size, hidden_size, layers_pre_mp)
 
+        # layers = [GritTransformerLayer(in_dim=hidden_size, out_dim=hidden_size, num_heads=n_heads,
+        #                                dropout=dropout, attn_dropout=attn_dropout)
+        #           for _ in range(n_layers)]
         layers = [GritTransformerLayer(in_dim=hidden_size, out_dim=hidden_size, num_heads=n_heads,
                                        dropout=dropout, attn_dropout=attn_dropout)
                   for _ in range(n_layers)]
@@ -127,4 +137,5 @@ class GritTransformer(torch.nn.Module):
         batch = self.rrwp_rel_encoder(batch)
         if self.layers_pre_mp > 0:
             batch = self.pre_mp(batch)
+
         return self.layers(batch)

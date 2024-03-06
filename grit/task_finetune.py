@@ -30,7 +30,7 @@ def main(args, config):
 
     train_dataloader, val_dataloader, test_dataloader = get_dataloaders(config.data)
     # nout = 10 # len(config.data.target_col.split(','))
-    nout = 3 # len(config.data.target_col.split(','))
+    nout = 2 # len(config.data.target_col.split(','))
     model = GritTransformer(nout, **config.model.grit, ksteps=config.data.pos_enc_rrwp.ksteps)
     from torchinfo import summary
     summary(model)
@@ -56,7 +56,8 @@ if __name__ == '__main__':
     # parser.add_argument('--config', default='grit/task_finetune.yaml')
     parser.add_argument('--config', default='task_finetune.yaml')
     parser.add_argument('--output_dir', default='results/grit/task_finetune')
-    parser.add_argument('--seed', default=42, type=int)
+    # parser.add_argument('--seed', default=42, type=int)
+    parser.add_argument('--seed', default=2, type=int)
     parser.add_argument('--ckpt', default=None, type=str)
     parser.add_argument('--ckpt_cl', default=None, type=str)
     args = parser.parse_args()
